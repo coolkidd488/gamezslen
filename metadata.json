@@ -1,0 +1,5 @@
+{
+  "name": "Slender: O Despertar",
+  "description": "Uma experiência de terror 3D em alta fidelidade. Colete 8 páginas enquanto evita o Slender Man. Apresenta atmosfera dinâmica, sons realistas e mensagens enigmáticas geradas por IA.",
+  "requestFramePermissions": ["camera"]
+}
