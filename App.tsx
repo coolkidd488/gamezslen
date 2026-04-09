@@ -12,6 +12,7 @@ import { getCrypticMessage, getDeathMessage } from './services/gemini';
 const Joystick = ({ onMove }: { onMove: (f: number, s: number) => void }) => {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [active, setActive] = useState(false);
+  const touchId = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMove = useCallback((e: any) => {
@@ -19,8 +20,18 @@ const Joystick = ({ onMove }: { onMove: (f: number, s: number) => void }) => {
     const rect = containerRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    let clientX, clientY;
+    if (e.touches) {
+      const touch = Array.from(e.touches as TouchList).find(t => t.identifier === touchId.current);
+      if (!touch) return;
+      clientX = touch.clientX;
+      clientY = touch.clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
     const dx = clientX - cx;
     const dy = clientY - cy;
     const dist = Math.min(Math.sqrt(dx*dx + dy*dy), rect.width / 2);
@@ -31,11 +42,23 @@ const Joystick = ({ onMove }: { onMove: (f: number, s: number) => void }) => {
     onMove(-y / (rect.width/2), x / (rect.width/2));
   }, [active, onMove]);
 
-  const handleEnd = useCallback(() => {
+  const handleEnd = useCallback((e: any) => {
+    if (e.touches && touchId.current !== null) {
+      const touch = Array.from(e.touches as TouchList).find(t => t.identifier === touchId.current);
+      if (touch) return;
+    }
     setActive(false);
+    touchId.current = null;
     setPos({ x: 0, y: 0 });
     onMove(0, 0);
   }, [onMove]);
+
+  const handleStart = (e: any) => {
+    setActive(true);
+    if (e.touches) {
+      touchId.current = e.changedTouches[0].identifier;
+    }
+  };
 
   useEffect(() => {
     if (active) {
@@ -44,6 +67,7 @@ const Joystick = ({ onMove }: { onMove: (f: number, s: number) => void }) => {
       window.addEventListener('blur', handleEnd);
       window.addEventListener('touchmove', handleMove, { passive: false });
       window.addEventListener('touchend', handleEnd);
+      window.addEventListener('touchcancel', handleEnd);
     }
     return () => { 
       window.removeEventListener('mousemove', handleMove); 
@@ -51,11 +75,12 @@ const Joystick = ({ onMove }: { onMove: (f: number, s: number) => void }) => {
       window.removeEventListener('blur', handleEnd);
       window.removeEventListener('touchmove', handleMove);
       window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
     };
   }, [active, handleMove, handleEnd]);
 
   return (
-    <div ref={containerRef} onMouseDown={() => setActive(true)} onTouchStart={() => setActive(true)}
+    <div ref={containerRef} onMouseDown={handleStart} onTouchStart={handleStart}
       className="w-32 h-32 bg-white/5 rounded-full border border-white/10 flex items-center justify-center touch-none pointer-events-auto">
       <div className="w-12 h-12 bg-white/20 rounded-full pointer-events-none" style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }} />
     </div>
@@ -100,7 +125,7 @@ const SlenderMan = ({ position, isMenu = false }: { position: THREE.Vector3, isM
 
       {/* Head (Featureless, slightly elongated) */}
       <mesh position={[0, 5.5, 0]}>
-        <sphereGeometry args={[0.28, 32, 32]} />
+        <sphereGeometry args={[0.28, 12, 12]} />
         <meshStandardMaterial color="#f5f5f5" roughness={1} />
       </mesh>
 
@@ -218,7 +243,7 @@ const Rain = ({ count = 1500, volume = 0.5 }) => {
     return pos;
   }, [count]);
 
-  useFrame((state, delta) => {
+  useFrame(() => {
     const pos = points.current.geometry.attributes.position.array as Float32Array;
     for (let i = 0; i < count; i++) {
       pos[i * 3 + 1] -= 0.5;
@@ -230,7 +255,7 @@ const Rain = ({ count = 1500, volume = 0.5 }) => {
   return (
     <points ref={points}>
       <bufferGeometry>
-        <bufferAttribute attach="attributes-position" count={count} array={positions} itemSize={3} />
+        <bufferAttribute attach="attributes-position" count={count} array={positions} itemSize={3} args={[positions, 3]} />
       </bufferGeometry>
       <pointsMaterial size={0.1} color="#aaa" transparent opacity={0.4} />
     </points>
@@ -334,11 +359,11 @@ const Forest = ({ onCollect, onCollectMap, collectedIndices, onGateReach, pagePo
         </mesh>
       ))}
 
-      <instancedMesh ref={trunkRef} args={[undefined, undefined, 300]} castShadow frustumCulled={false}>
+      <instancedMesh ref={trunkRef} args={[undefined, undefined, 400]} castShadow frustumCulled={false}>
         <cylinderGeometry args={[0.2, 0.4, 6]} />
         <meshStandardMaterial color="#0a0805" />
       </instancedMesh>
-      <instancedMesh ref={topRef} args={[undefined, undefined, 300]} castShadow frustumCulled={false}>
+      <instancedMesh ref={topRef} args={[undefined, undefined, 400]} castShadow frustumCulled={false}>
         <coneGeometry args={[2, 6]} />
         <meshStandardMaterial color="#050805" />
       </instancedMesh>
@@ -458,7 +483,7 @@ const PageItem = ({ id, pos, onCollect, esp }: any) => {
 };
 
 // --- COMPONENTE: TERMINAL ---
-const Terminal = ({ onClose, setters, states }: { onClose: () => void, setters: any, states: any }) => {
+const Terminal = ({ onClose, setters }: { onClose: () => void, setters: any }) => {
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>(["SISTEMA DE TERMINAL SLENDER V1.0", "DIGITE 'HELP' PARA COMANDOS"]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -485,15 +510,15 @@ const Terminal = ({ onClose, setters, states }: { onClose: () => void, setters: 
     else if (cmd === "/fly") { setters.setIsFlying(true); response = "MODO VOO ATIVADO"; }
     else if (cmd === "/unfly") { setters.setIsFlying(false); response = "MODO VOO DESATIVADO"; }
     else if (cmd === "/killkiller") { setters.setKillerKilled(true); response = "KILLER ELIMINADO"; }
-    else if (cmd === "/unkillkiler") { setters.setKillerKilled(false); response = "KILLER RESTAURADO"; }
+    else if (cmd === "/unkillkiller") { setters.setKillerKilled(false); response = "KILLER RESTAURADO"; }
     else if (cmd === "/givemap") { setters.setHasMap(true); response = "MAPA CONCEDIDO"; }
     else if (cmd === "/givepaper") { 
       const n = parseInt(arg) || 0;
       setters.setPages(Math.min(8, Math.max(0, n)));
       response = `PÁGINAS DEFINIDAS PARA ${Math.min(8, Math.max(0, n))}`;
     }
-    else if (cmd === "/godmod") { setters.setGodMode(true); response = "MODO DEUS ATIVADO"; }
-    else if (cmd === "/ungodmod") { setters.setGodMode(false); response = "MODO DEUS DESATIVADO"; }
+    else if (cmd === "/godmode") { setters.setGodMode(true); response = "MODO DEUS ATIVADO"; }
+    else if (cmd === "/ungodmode") { setters.setGodMode(false); response = "MODO DEUS DESATIVADO"; }
     else if (cmd === "/quantitykiller") {
       const n = parseInt(arg) || 1;
       setters.setKillerQuantity(Math.min(10, Math.max(1, n)));
@@ -578,12 +603,12 @@ const App: React.FC = () => {
   const [pages, setPages] = useState(0);
   const [flashlight, setFlashlight] = useState(true);
   const [staticAmount, setStaticAmount] = useState(0);
-  const [msg, setMsg] = useState("");
+  const [_msg, setMsg] = useState("");
   const [deathNote, setDeathNote] = useState("");
   const [isMobile] = useState(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
   const joy = useRef({ front: 0, side: 0 });
   const look = useRef({ x: 0, y: 0 });
-  const [angle, setAngle] = useState<number | null>(null);
+  const [_angle, setAngle] = useState<number | null>(null);
   const [jumpscare, setJumpscare] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [hasMap, setHasMap] = useState(false);
@@ -618,7 +643,7 @@ const App: React.FC = () => {
   const [gravity, setGravity] = useState(1);
   const [radarIntensity, setRadarIntensity] = useState(0);
   const [isRaining, setIsRaining] = useState(true);
-  const [hallucinationCount, setHallucinationCount] = useState(0);
+  const [_hallucinationCount, setHallucinationCount] = useState(0);
   const [collisionEnabled, setCollisionEnabled] = useState(true);
   const [flashlightIntensity, setFlashlightIntensity] = useState(80);
   const [fov, setFov] = useState(75);
@@ -633,6 +658,13 @@ const App: React.FC = () => {
   const [showCoords, setShowCoords] = useState(false);
   const [showFps, setShowFps] = useState(false);
   const [nightVision, setNightVision] = useState(false);
+
+  const menuTrees = useMemo(() => {
+    return [...Array(15)].map(() => ({
+      position: [(Math.random() - 0.5) * 30, 0, -5 - Math.random() * 15],
+      rotation: [0, Math.random() * Math.PI, 0]
+    }));
+  }, []);
 
   const startGame = () => {
     // Request full screen on mobile
@@ -793,10 +825,6 @@ const App: React.FC = () => {
       }
     };
 
-    const handleMouseUpGlobal = () => {
-      setIsMouseDown(false);
-      look.current = { x: 0, y: 0 };
-    };
     const handleMouseDownGlobal = () => setIsMouseDown(true);
     
     const handleMouseMoveGlobal = (e: MouseEvent) => {
@@ -886,12 +914,19 @@ const App: React.FC = () => {
   return (
     <div className="w-full h-full bg-black relative overflow-hidden select-none"
       onTouchMove={(e) => {
-        if (status === GameStatus.PLAYING && e.touches[0].clientX > window.innerWidth / 2) {
-          const touch = e.touches[0];
-          look.current = { x: touch.clientX, y: touch.clientY };
+        if (status === GameStatus.PLAYING) {
+          const touch = Array.from(e.touches).find(t => t.clientX > window.innerWidth / 2);
+          if (touch) {
+            look.current = { x: touch.clientX, y: touch.clientY };
+          }
         }
       }}
-      onTouchEnd={() => { look.current = { x: 0, y: 0 }; }}>
+      onTouchEnd={(e) => {
+        const hasRightTouch = Array.from(e.touches).some(t => t.clientX > window.innerWidth / 2);
+        if (!hasRightTouch) {
+          look.current = { x: 0, y: 0 };
+        }
+      }}>
 
       {/* Crosshair (Red Dot) */}
       {status === GameStatus.PLAYING && (
@@ -925,7 +960,6 @@ const App: React.FC = () => {
             setNightVision, setFogDensity, setFov, setIsGrayscale, setIsPixelated, setJumpScareActive, setHighJump, setTimeScale, setShowCoords, setShowFps, setGameVolume, setBrightness,
             resetGame: () => window.location.reload()
           }}
-          states={{ freezeTemp, stopKiller, isDay, isFlying, killerKilled, hasMap, pages, godMode, killerQuantity, espDoor, espMaps, espPapers, hasGun, playerSpeed, isInvisible, radarEnabled, gravity, isRaining, collisionEnabled, flashlightIntensity, nightVision, fogDensity, fov, isGrayscale, isPixelated, jumpScareActive, highJump, timeScale, showCoords, showFps, gameVolume, brightness }}
         />
       )}
 
@@ -948,7 +982,7 @@ const App: React.FC = () => {
       )}
 
       {(status === GameStatus.PLAYING || status === GameStatus.PAUSED) && (
-        <Canvas shadows camera={{ fov }} style={{ filter: `${isGrayscale ? 'grayscale(1)' : ''} ${isPixelated ? 'contrast(1.5) brightness(1.2)' : ''}` }}>
+        <Canvas shadows camera={{ fov }} style={{ filter: `${isGrayscale ? 'grayscale(1)' : ''} ${isPixelated ? 'contrast(1.5)' : ''} brightness(${brightness})` }}>
           <fog attach="fog" args={[isDay ? '#87ceeb' : (nightVision ? '#003300' : '#000'), 0, isDay ? 100 : fogDensity]} />
           <Suspense fallback={null}>
             {!isDay && <Stars count={3000} factor={4} fade />}
@@ -1061,11 +1095,11 @@ const App: React.FC = () => {
 
               {/* Compass Panel (Bottom) */}
               <div className="flex flex-col items-center gap-0 md:gap-4 bg-black/60 p-0 md:p-8 rounded-lg md:rounded-3xl border border-white/20 backdrop-blur-xl w-full shadow-2xl">
-                <div className="text-[0.00000000000000000000000000000000000000000001px] md:text-xs opacity-50 tracking-[0.4em] font-bold">ROSA DOS VENTOS</div>
-                <div className="scale-[0.00000000000000000000000000000000000000000001] md:scale-125 py-0 md:py-4 -my-108 md:my-0">
+                <div className="text-[6px] md:text-xs opacity-50 tracking-[0.4em] font-bold">ROSA DOS VENTOS</div>
+                <div className="scale-[0.1] md:scale-100 py-0 md:py-4 -my-14 md:my-0">
                   <Compass angle={playerAngle.current} />
                 </div>
-                <div className="text-[0.00000000000000000000000000000000000000000001px] md:text-[11px] opacity-40 text-center leading-tight md:leading-relaxed font-medium">
+                <div className="text-[5px] md:text-[11px] opacity-40 text-center leading-tight md:leading-relaxed font-medium">
                   O PONTEIRO VERMELHO INDICA A DIREÇÃO DA SUA VISÃO
                 </div>
               </div>
@@ -1079,19 +1113,19 @@ const App: React.FC = () => {
       {/* UI Overlay */}
       <div className="absolute inset-0 pointer-events-none z-50 p-6 md:p-10 flex flex-col justify-between text-white uppercase font-bold tracking-widest">
         {status === GameStatus.MENU ? (
-          <div className="absolute inset-0 bg-zinc-950 flex flex-col md:flex-row items-center justify-center md:justify-between pointer-events-auto border-4 border-white/5 p-4 md:p-20 overflow-hidden">
-            {/* Left Side: Menu Content */}
-            <div className="flex flex-col items-center md:items-start z-20 text-center md:text-left scale-90 sm:scale-100">
+          <div className="absolute inset-0 bg-zinc-950 flex flex-col md:flex-row items-end md:items-center justify-center md:justify-between pointer-events-auto border-4 border-white/5 p-8 md:p-20 overflow-hidden">
+            {/* Menu Content */}
+            <div className="flex flex-col items-end md:items-start z-20 text-right md:text-left scale-90 sm:scale-100 mb-10 md:mb-0">
               <motion.h1 
                 initial={{ y: -50, opacity: 0 }}
                 animate={{ y: 0, opacity: 0.9 }}
-                className="text-5xl md:text-9xl font-bold text-white mb-2 md:mb-4 tracking-[0.2em]"
+                className="text-2xl md:text-7xl font-bold text-white mb-2 md:mb-4 tracking-[0.2em]"
               >
                 SLENDER
               </motion.h1>
-              <p className="text-zinc-500 text-[8px] md:text-xs mb-6 md:mb-10 tracking-[0.5em] md:ml-2">O DESPERTAR</p>
+              <p className="text-zinc-500 text-[8px] md:text-xs mb-6 md:mb-10 tracking-[0.5em] ml-1 md:ml-2">O DESPERTAR</p>
               
-              <div className="flex flex-col items-center md:items-start gap-4 md:gap-8">
+              <div className="flex flex-col items-end md:items-start gap-4 md:gap-8">
                 <button 
                   onClick={startGame} 
                   className="bg-white text-black px-10 md:px-16 py-3 md:py-5 text-base md:text-xl hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)] font-black tracking-widest"
@@ -1099,7 +1133,7 @@ const App: React.FC = () => {
                   INICIAR JOGO
                 </button>
 
-                <div className="flex flex-wrap justify-center md:justify-start gap-2 md:gap-4">
+                <div className="flex flex-wrap justify-end md:justify-start gap-2 md:gap-4">
                   <button 
                     onClick={() => setTerminalEnabled(!terminalEnabled)}
                     className={`text-[7px] md:text-[10px] tracking-[0.3em] px-3 md:px-4 py-1.5 md:py-2 border transition-all ${terminalEnabled ? 'border-white text-white opacity-100' : 'border-white/20 text-white/40 opacity-60'}`}
@@ -1140,7 +1174,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Right Side: 3D Slender Man Preview */}
-            <div className="hidden md:block relative w-1/2 h-full pointer-events-none">
+            <div className="absolute md:relative inset-0 md:inset-auto md:w-1/2 h-full pointer-events-none opacity-30 md:opacity-100">
               <AnimatePresence>
                 {menuSlenderVisible && (
                   <motion.div 
@@ -1157,8 +1191,8 @@ const App: React.FC = () => {
                       <SlenderMan position={new THREE.Vector3(0, 0, 0)} isMenu />
                       
                       {/* Mini Forest Background for Menu */}
-                      {[...Array(15)].map((_, i) => (
-                        <group key={i} position={[(Math.random() - 0.5) * 30, 0, -5 - Math.random() * 15]}>
+                      {menuTrees.map((tree, i) => (
+                        <group key={i} position={tree.position as any} rotation={tree.rotation as any}>
                           <mesh position={[0, 3, 0]}>
                             <cylinderGeometry args={[0.2, 0.3, 6]} />
                             <meshStandardMaterial color="#0a0805" />
@@ -1293,8 +1327,8 @@ const App: React.FC = () => {
   );
 };
 
-const GameController = ({ isMobile, joy, look, flashlight, onDeath, setStatic, pages, setAngle, paused, playerPosRef, playerAngleRef, isFlying, stopKiller, killerKilled, godMode, killerQuantity, hasGun, isShooting, setIsShooting, playerSpeed, isInvisible, radarEnabled, gravity, setRadarIntensity, collisionEnabled, flashlightIntensity, highJump, timeScale, volume, timer }: any) => {
-  const { camera, scene, gl } = useThree();
+const GameController = ({ isMobile, joy, look, flashlight, onDeath, setStatic, pages, paused, playerPosRef, playerAngleRef, isFlying, stopKiller, killerKilled, godMode, killerQuantity, hasGun, isShooting, setIsShooting, playerSpeed, isInvisible, radarEnabled, gravity, setRadarIntensity, collisionEnabled, flashlightIntensity, highJump, timeScale, volume, timer }: any) => {
+  const { camera, scene } = useThree();
   const [slenderPositions, setSlenderPositions] = useState<THREE.Vector3[]>([]);
   const [slenderDead, setSlenderDead] = useState<boolean[]>([]);
   const lastTeleport = useRef(0);
@@ -1303,7 +1337,7 @@ const GameController = ({ isMobile, joy, look, flashlight, onDeath, setStatic, p
   const gunRef = useRef<THREE.Group>(null!);
   const keys = useRef<Record<string, boolean>>({});
   const lastLook = useRef({ x: 0, y: 0 });
-  const [pointerLocked, setPointerLocked] = useState(false);
+  const [_pointerLocked, setPointerLocked] = useState(false);
   const lastThunder = useRef(0);
   const shotHandled = useRef(false);
 
@@ -1421,7 +1455,7 @@ const GameController = ({ isMobile, joy, look, flashlight, onDeath, setStatic, p
     };
   }, [scene, hasGun, paused, setIsShooting]);
 
-  useFrame((state, delta) => {
+  useFrame((state, _delta) => {
     if (paused) return;
 
     let f = joy.current.front || (keys.current['KeyW'] ? 1 : (keys.current['KeyS'] ? -1 : 0));

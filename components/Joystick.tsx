@@ -11,7 +11,7 @@ const Joystick: React.FC<JoystickProps> = ({ onMove }) => {
   const joystickRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
+  const handleStart = (_e: React.TouchEvent | React.MouseEvent) => {
     setIsDragging(true);
   };
 
